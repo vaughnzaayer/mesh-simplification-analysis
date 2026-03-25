@@ -40,3 +40,6 @@ tags
 *.exe
 *.out
 *.app
+
+# Built Dependencies (for now)
+deps/
