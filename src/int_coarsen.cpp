@@ -19,9 +19,6 @@ bool flattenVertexCETM(IntrinsicTriangulation& tri, Vertex i) {
     double ui = 0.0;
     std::vector<Halfedge> halfedges;
     std::vector<double> originalLens;
-    tri.requireEdgeLengths();
-    tri.requireVertexGaussianCurvatures();
-    tri.requireEdgeCotanWeights();
     for (Halfedge he : i.outgoingHalfedges()) {
         halfedges.push_back(he);
         originalLens.push_back(tri.edgeLengths[he.edge()]);
@@ -67,13 +64,11 @@ bool flattenVertexCETM(IntrinsicTriangulation& tri, Vertex i) {
             for (size_t k = 0; k < halfedges.size(); k++) {
                 tri.edgeLengths[halfedges[k].edge()] = originalLens[k];
             }
-            tri.refreshQuantities();
             return false;
         }
 
         double error = (2 * PI) - currentAngleSum;
         if (std::abs(error) < TOLERANCE) {
-            tri.refreshQuantities();
             return true;
         }
 
@@ -84,8 +79,6 @@ bool flattenVertexCETM(IntrinsicTriangulation& tri, Vertex i) {
     for (size_t k = 0; k < halfedges.size(); k++) {
         tri.edgeLengths[halfedges[k].edge()] = originalLens[k];
     }
-    tri.refreshQuantities();
-    tri.unrequireEdgeLengths();
     return false;
 }
 
@@ -97,7 +90,6 @@ bool flatVertexRemoval(IntrinsicTriangulation& tri, Vertex i) {
         candidates = i.degree();
         for (Edge e : i.adjacentEdges()) {
         if (tri.flipEdgeIfPossible(e)) {
-            tri.refreshQuantities();
             break;
         };
         candidates -= 1;
@@ -126,14 +118,12 @@ void updateCurvatureChannels(IntrinsicTriangulation& tri, VertexData<double>& po
 
 void computeRemovalCost(IntrinsicTriangulation& tri, Vertex i, VertexData<double>& posKVal, VertexData<double>& negKVal, VertexData<Vector2>& posKTan, VertexData<Vector2>& negKTan, VertexData<double>& removalCost, bool updateTans, bool revertFlattening) {
     // Save the pre-flattening edge lengths
-    tri.requireEdgeLengths();
     std::unordered_map<Edge, double> storedEdgeLens;
     for (Edge e : i.adjacentEdges()) {
         storedEdgeLens[e] = tri.edgeLengths[e];
     }
 
     // Save the pre-flattening vertex curvatures
-    tri.requireVertexGaussianCurvatures();
     std::unordered_map<Vertex, double> oldPosVertK;
     std::unordered_map<Vertex, double> oldNegVertK;
     double oldPosKTotal = 0.0;
@@ -173,8 +163,6 @@ void computeRemovalCost(IntrinsicTriangulation& tri, Vertex i, VertexData<double
     }
 
     // Compute cost
-    tri.requireHalfedgeVectorsInVertex();
-    tri.requireTransportVectorsAlongHalfedge();
     double cost = 0.0;
 
     double posDiff = std::abs(newPosKTotal - oldPosKTotal);
@@ -213,12 +201,12 @@ void computeRemovalCost(IntrinsicTriangulation& tri, Vertex i, VertexData<double
         // Restore edge lengths and return
         for (Edge e : i.adjacentEdges()) {
             tri.edgeLengths[e] = storedEdgeLens[e];
-            tri.refreshQuantities();
         }
     } 
-    // else {
-    //     updateCurvatureChannels(tri, posKVal, negKVal);
-    // }
+    else {
+        tri.refreshQuantities();
+        updateCurvatureChannels(tri, posKVal, negKVal);
+    }
     
     return;
 }
@@ -239,6 +227,9 @@ bool removeVertAndUpdate(IntrinsicTriangulation& tri, Vertex i, VertexData<doubl
 
 
 void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
+    // Get vertex count info for console output
+    uint totalInitVs = tri.mesh.nVertices();
+
     // Flip to Delaunay
     tri.flipToDelaunay();
 
@@ -251,6 +242,8 @@ void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
 
     tri.requireVertexGaussianCurvatures();
     tri.requireEdgeLengths();
+    tri.requireHalfedgeVectorsInVertex();
+    tri.requireTransportVectorsAlongHalfedge();
 
     updateCurvatureChannels(tri, posKVal, negKVal);
 
@@ -258,13 +251,21 @@ void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
     std::priority_queue<VertexCost, std::vector<VertexCost>, std::greater<VertexCost>> cost_pq; 
 
     // Initialize the cost value of each vertex, adding it to the queue as we go
+    fmt::println("Initializing...");
+    uint processed = 0;
     for (Vertex v : tri.mesh.vertices()) {
-        // std::cout << "COMPUTING REMOVAL COST OF VERTEX: " << v << std::endl;
         computeRemovalCost(tri, v, posKVal, negKVal, posTanVect, negTanVect, removalCost, false, true);
         cost_pq.push(VertexCost{v, removalCost[v]});
+        ++processed;
+        if (processed % 100 == 0) {
+            fmt::println("Initialized: {} / {}", processed, totalInitVs);
+        }
     }
+    fmt::println("Initializing done.");
 
     // Main loop: Until target vertex count is reached or there are no more vertices to remove
+    fmt::println("Coarsening to {} vertices.", int(count));
+    processed = 0;
     while (tri.mesh.nVertices() > count && !cost_pq.empty()) {
         // Pop the top vertex from the queue
         Vertex i = cost_pq.top().v;
@@ -272,14 +273,8 @@ void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
         cost_pq.pop();
         // std::cout << "BEGINNING REMOVAL OF VERTEX: " << i << std::endl;
 
-        // Check if i is dead
-        if (i.isDead()) {
-            std::cout << "SKIPPING DEAD VERTEX: " << i << std::endl;
-            continue;
-        }
-
-        // Check if i is stale
-        if (queuedCost != removalCost[i]) {
+        // Check if i is dead or stale
+        if (i.isDead() || queuedCost != removalCost[i]) {
             continue;
         }
 
@@ -290,9 +285,8 @@ void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
             neighbors.push_back(j);
         }
 
-        // Attempt to flatten and remove the vertex
-        if (!flattenVertexCETM(tri, i)) {
-            std::cout << "FLATTENING FAILED FOR: " << i << std::endl;
+        computeRemovalCost(tri, i, posKVal, negKVal, posTanVect, negTanVect, removalCost, true, false);
+        if (removalCost[i] == std::numeric_limits<double>::max()) {
             continue;
         }
 
@@ -314,11 +308,16 @@ void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
         for (Vertex j : neighbors) {
             if (!j.isDead()) {
                 // std::cout << "ATTEMPTING TO UPDATE NEIGHBOR: " << j << std::endl;
-                computeRemovalCost(tri, j, posKVal, negKVal, posTanVect, negTanVect, removalCost, true, true);
+                computeRemovalCost(tri, j, posKVal, negKVal, posTanVect, negTanVect, removalCost, false, true);
                 cost_pq.push(VertexCost{j, removalCost[j]});
             }
         }
 
-        tri.flipToDelaunay();
+        ++processed;
+        if (processed % 100 == 0) {
+            fmt::println("Vertices removed: {} / {}", processed, totalInitVs-count);
+        }
     }
+    tri.mesh.compress();
+    fmt::println("Simplification done.");
 }

@@ -358,7 +358,7 @@ void myCallback() {
 
   if (ImGui::Button("Run ICE Simplification")) {
     size_t n = std::round(intrinsic->mesh.nVertices() * 0.90);
-    intrinsicallyCoarsen(*intrinsic, 200);
+    intrinsicallyCoarsen(*intrinsic, target);
   }
 
   if (ImGui::Button("Create Neighborhood")) {
@@ -395,15 +395,44 @@ void myCallback() {
 
   if (ImGui::Button("Write Intrinsic Mesh to .PLY")) {
     intrinsic->requireVertexGaussianCurvatures();
-    intrinsic->requireEdgeCotanWeights();
-    intrinsic->requireEdgeLengths();
-    RichSurfaceMeshData richData(intrinsic->mesh);
-    richData.outputFormat = happly::DataFormat::ASCII;
-    // richData.addMeshConnectivity();
+
+    std::vector<Vector3> cleanPositions;
+    std::vector<double> cleanCurvatures;
+    std::unordered_map<Vertex, size_t> vMap;
+    
+    size_t idx = 0;
+    for (Vertex v : intrinsic->mesh.vertices()) {
+        if (!v.isDead()) {
+            cleanPositions.push_back(intrinsic->vertexLocations[v].interpolate(geometry->inputVertexPositions));
+            cleanCurvatures.push_back(intrinsic->vertexGaussianCurvatures[v]);
+            vMap[v] = idx++;
+        }
+    }
+    std::vector<std::vector<size_t>> cleanFaces;
+    for (Face f : intrinsic->mesh.faces()) {
+        if (!f.isDead()) {
+            std::vector<size_t> fVerts;
+            for (Vertex v : f.adjacentVertices()) {
+                fVerts.push_back(vMap[v]);
+            }
+            cleanFaces.push_back(fVerts);
+        }
+    }
+    std::unique_ptr<ManifoldSurfaceMesh> exportMesh;
+    std::unique_ptr<VertexPositionGeometry> exportGeo;
+    std::tie(exportMesh, exportGeo) = makeManifoldSurfaceMeshAndGeometry(cleanFaces, cleanPositions);
+
+    RichSurfaceMeshData richData(*exportMesh);
+    richData.outputFormat = happly::DataFormat::ASCII; 
     richData.addMeshConnectivity();
-    richData.addVertexProperty("vertex_gaussian_curvature", intrinsic->vertexGaussianCurvatures);
-    richData.addEdgeProperty("edge_cotan_weights", intrinsic->edgeCotanWeights);
-    richData.write("mesh.ply");
+    
+    VertexData<double> exportCurv(*exportMesh);
+    for (Vertex v : exportMesh->vertices()) {
+        exportCurv[v] = cleanCurvatures[v.getIndex()];
+    }
+    richData.addVertexProperty("vertex_gaussian_curvature", exportCurv);
+
+    richData.write("clean_coarsened_mesh.ply");
   }
 
   geometry->requireEdgeCotanWeights();
