@@ -1,6 +1,7 @@
 # Build directories
 build/
 build_debug/
+console/
 
 # Editor and OS things
 .DS_Store
@@ -41,5 +42,3 @@ tags
 *.out
 *.app
 
-# Built Dependencies (for now)
-deps/

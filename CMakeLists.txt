@@ -1,17 +1,9 @@
 cmake_minimum_required(VERSION 3.11.0)
 
-project(gc_polyscope_example)
+project(mesh_simplification_analysis)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# include(FetchContent)
-
-# FetchContent_Declare(
-#   fmt
-#   GIT_REPOSITORY https://github.com/fmtlib/fmt
-#   GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-# FetchContent_MakeAvailable(fmt)
 
 find_package(fmt)
 
@@ -73,20 +65,29 @@ endif()
 
 
 # == Deps
+# add_subdirectory(deps/libigl)
 add_subdirectory(deps/geometry-central)
 add_subdirectory(deps/polyscope)
 
+
 # == Build our project stuff
+
+# file(GLOB INTRINSIC_SIMP_SRCS "src/intrinsic_simp/src/*.cpp")
 
 set(SRCS 
   src/main.cpp
+  src/int_coarsen.cpp
+  src/int_coarsen.h
+  # ${INTRINSIC_SIMP_SRCS}
 	# add any other source files here
 )
 
 
 # To change the name of your executable, change "gc_project" in the lines below to whatever you want
-add_executable(gc_project "${SRCS}")
-target_include_directories(gc_project PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
+add_executable(simplif_analysis "${SRCS}")
+target_include_directories(simplif_analysis PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 # add the args.hxx project which we use for command line args
-target_include_directories(gc_project PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/deps/polyscope/deps/args")
-target_link_libraries(gc_project geometry-central polyscope fmt::fmt)
+target_include_directories(simplif_analysis PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/deps/polyscope/deps/args")
+# target_include_directories(simplif_analysis PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src/intrinsic_simp/src")
+
+target_link_libraries(simplif_analysis geometry-central polyscope fmt::fmt)
