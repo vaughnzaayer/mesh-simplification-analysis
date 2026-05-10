@@ -426,13 +426,17 @@ void myCallback() {
 
     RichSurfaceMeshData richData(*exportMesh);
     richData.outputFormat = happly::DataFormat::ASCII; 
-    richData.addMeshConnectivity();
+    std::unique_ptr<SignpostIntrinsicTriangulation> tri(new SignpostIntrinsicTriangulation(*exportMesh, *exportGeo));
     
+    tri->requireVertexGaussianCurvatures();
     VertexData<double> exportCurv(*exportMesh);
     for (Vertex v : exportMesh->vertices()) {
         exportCurv[v] = cleanCurvatures[v.getIndex()];
     }
-    richData.addVertexProperty("vertex_gaussian_curvature", exportCurv);
+  
+    richData.addVertexProperty("vertex_gaussian_curvature", tri->vertexGaussianCurvatures);
+    richData.addIntrinsicGeometry(*tri);
+    richData.addMeshConnectivity();
 
     richData.write("clean_coarsened_mesh.ply");
   }
