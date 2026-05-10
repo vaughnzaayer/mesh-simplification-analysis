@@ -293,8 +293,8 @@ void intrinsicallyCoarsen(IntrinsicTriangulation& tri, size_t count) {
         // Remove i
         // std::cout << "ATTEMPTING TO REMOVE VERTEX: " << i << std::endl;
         if (!flatVertexRemoval(tri, i)) {
-            std::cout << "REMOVAL FAILED FOR: " << i << std::endl;
-            // continue;
+          removalCost[i] = std::numeric_limits<double>::max();
+          continue;
         }
         // std::cout << "REMOVED VERTEX: " << i << std::endl;
 

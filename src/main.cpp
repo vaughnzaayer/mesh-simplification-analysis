@@ -21,6 +21,8 @@
 #include "polyscope/point_cloud.h"
 #include "polyscope/curve_network.h"
 
+#include <filesystem>
+
 #include "args/args.hxx"
 #include "imgui.h"
 
